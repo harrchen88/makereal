@@ -1,0 +1,106 @@
+﻿{
+  "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "webSiteName": {
+      "type": "string",
+      "defaultValue": "dojo-bookings-app-dev-1"
+    },
+    "sqlservername": {
+      "type": "string",
+      "defaultValue": "myserver"
+    },
+    "guid": {
+      "type": "string",
+      "defaultValue": "pid-5a669062-d8d0-471f-b36a-40115651cea7"
+    },
+    "databasename": {
+      "type": "string",
+      "defaultValue": "mydb"
+    },
+    "authenticationMode": {
+      "type": "string",
+      "defaultValue": "azuresql"
+    },
+    "instrumentationKey": {
+      "type": "string",
+      "defaultValue": "80459218-06d0-4b45-be1b-80dc8d5fe752"
+    },
+    "keyVaultUri": {
+      "type": "string",
+      "defaultValue": "https://dojo-ss-kv02.vault.azure.net/"
+    },
+    "servicePrincipalClientId": {
+      "type": "string",
+      "defaultValue": "7f561c6b-1cdb-4380-9f71-3ac984d70545"
+    },
+    "servicePrincipalPassword": {
+      "type": "securestring",
+      "defaultValue": ""
+    },
+    "tenantId": {
+      "type": "string",
+      "defaultValue": "72f988bf-86f1-41af-91ab-2d7cd011db47"
+    }
+  },
+  "variables": {
+    "webSiteName": "[parameters('webSiteName')]",
+    "sqlserverName": "[parameters('sqlserverName')]",
+    "authenticationMode": "[parameters('authenticationMode')]",
+    "databaseName": "[parameters('databaseName')]",
+    "keyVaultUri": "[parameters('keyVaultUri')]",
+    "instrumentationKey": "[parameters('instrumentationKey')]",
+    "servicePrincipalClientId": "[parameters('servicePrincipalClientId')]",
+    "servicePrincipalPassword": "[parameters('servicePrincipalPassword')]",
+    "tenantId": "[parameters('tenantId')]"
+  },
+  "resources": [
+    { // add this resource to the resources section in the mainTemplate.json (do not add the entire file)
+      "apiVersion": "2018-02-01",
+      "name": "[concat(parameters('guid'))]", // use your generated GUID here
+      "type": "Microsoft.Resources/deployments",
+      "properties": {
+        "mode": "Incremental",
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "resources": []
+        }
+      }
+    },
+    {
+      "apiVersion": "2015-08-01",
+      "name": "[parameters('webSiteName')]",
+      "type": "Microsoft.Web/sites",
+      "location": "[resourceGroup().location]",
+      "dependsOn": [],
+      "tags": {},
+      "properties": {},
+      "resources": [
+        {
+          "name": "appsettings",
+          "type": "config",
+          "apiVersion": "2015-08-01",
+          "dependsOn": [
+            "[resourceId('Microsoft.Web/sites', parameters('webSiteName'))]"
+          ],
+          "tags": {
+            "displayName": "appSettings"
+          },
+          "properties": {
+            "SqlServerName": "[variables('sqlserverName')]",
+            "AuthenticationMode": "[variables('authenticationMode')]",
+            "KeyVaultUri": "[variables('keyVaultUri')]",
+            "DatabaseName": "[variables('databaseName')]",
+            "InstrumentationKey": "[variables('instrumentationKey')]",
+            "ServicePrincipalClientId": "[variables('servicePrincipalClientId')]",
+            "ServicePrincipalPassword": "[variables('servicePrincipalPassword')]",
+            "TenantId": "[variables('tenantId')]"
+          }
+        }
+      ]
+    }
+  ],
+  "outputs": {
+  }
+}

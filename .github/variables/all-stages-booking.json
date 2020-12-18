@@ -1,0 +1,72 @@
+{
+  "variables": [
+    {
+      "name": "administratorLogin",
+      "value": "dojosvc"
+    },
+    {
+      "name": "administratorPassword",
+      "value": "Password@123"
+    },
+    {
+      "name": "administratorsid",
+      "value": "eace0314-426f-4883-94e3-c48680d4bb06"
+    },
+    {
+      "name": "authenticationMode",
+      "value": "azuresql"
+    },
+    {
+      "name": "diagnosticStorageAccountName",
+      "value": "bookingkvsa"
+    },
+    {
+      "name": "diagnosticStorageResourceGroup",
+      "value": "Dojo-Booking-Storage"
+    },
+    {
+      "name": "ElasticPoolType",
+      "value": "specific"
+    },
+    {
+      "name": "keyvaultserviceprincipalclientid",
+      "value": "fff91677-ece3-4ba7-bd2f-54ccdb6d33f1"
+    },
+    {
+      "name": "localsqlserveradmin",
+      "value": "sa"
+    },
+    {
+      "name": "localsqlserveradministratorpassword",
+      "value": "devadmin@123"
+    },
+    {
+      "name": "logAnalyticsWorkspaceResourceGroup",
+      "value": "Dojo-Booking-Log-Analytics-WhiteBelt"
+    },
+    {
+      "name": "sqlsecuritylogstorageaccountname",
+      "value": "bookingsqlsa"
+    },
+    {
+      "name": "Solution_Path",
+      "value": "ModernizationWithAppServiceDotNET/SmartHotel360.Registration.sln"
+    },
+    {
+      "name": "sqlserveradministratorpassword",
+      "value": "Password@123"
+    },
+    {
+      "name": "sqlserveradmin",
+      "value": "admin.SQL"
+    },
+    {
+      "name": "vaultsku",
+      "value": "Premium"
+    },
+    {
+      "name": "az_sk_path",
+      "value": "C:/Users/runneradmin/AppData/Local/Microsoft/AzSKLogs/"
+    }
+  ]
+}

@@ -1,0 +1,60 @@
+{
+  "variables": [
+    {
+      "name": "appinsights",
+      "value": "bookings-app-prd"
+    },
+    {
+      "name": "appserviceplan",
+      "value": "bookings-plan-prd"
+    },
+    {
+      "name": "armoutput",
+      "value": "armoutput-prd"
+    },
+    {
+      "name": "databasename",
+      "value": "bookings-db-prd"
+    },
+    {
+      "name": "elasticPoolName",
+      "value": "bookings-server-pool-prd"
+    },
+    {
+      "name": "environment",
+      "value": "PRD"
+    },
+    {
+      "name": "keyVaultName",
+      "value": "bookingkvprd"
+    },
+    {
+      "name": "logAnalyticsWorkspaceName",
+      "value": "booking-workspace-prd"
+    },
+    {
+      "name": "objectId",
+      "value": "cf4aee29-420b-450e-a35b-f4aff6e4a934"
+    },
+    {
+      "name": "resourcegroup",
+      "value": "Dojo-Booking-PRD"
+    },
+    {
+      "name": "rglocation",
+      "value": "eastus"
+    },
+    {
+      "name": "rglocationFull",
+      "value": "East US"
+    },
+    {
+      "name": "sqlserver",
+      "value": "bookings-server-prd"
+    },
+    {
+      "name": "webapp",
+      "value": "bookings-app-prd"
+    }
+  ]
+}

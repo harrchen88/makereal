@@ -1,0 +1,24 @@
+﻿################################################################################
+# This .gitignore file was automatically created by Microsoft(R) Visual Studio.
+################################################################################
+
+/ModernizationWithAppServiceDotNET/.vs/SmartHotel360.Registration/v15/Server/sqlite3/db.lock
+/ModernizationWithAppServiceDotNET/.vs/SmartHotel360.Registration/v16/Server/sqlite3
+/ModernizationWithAppServiceDotNET/SmartHotel360.Registration.Web/bin
+/ModernizationWithAppServiceDotNET/SmartHotel360.Registration.Web/obj/Debug
+/ModernizationWithAppServiceDotNET/SmartHotel360.Registration.Web/obj/Release/SmartHotel360.Registration.Web.csproj.CoreCompileInputs.cache
+/ModernizationWithAppServiceDotNET/SmartHotel360.Registration.Web/obj/Release/SmartHotel360.Registration.Web.csprojAssemblyReference.cache
+/.vs
+/ModernizationWithAppServiceDotNET/.vs
+/ModernizationWithAppServiceDotNET/packages
+/ModernizationWithAppServiceDotNET/SmartHotel360.Registration.Web.Tests/bin/Debug
+/ModernizationWithAppServiceDotNET/SmartHotel360.Registration.Web.Tests/obj
+/ModernizationWithAppServiceDotNET/SmartHotel360.Registration.Web/StyleCop.Cache
+/ModernizationWithAppServiceDotNET/SmartHotel360.Registration.Web/stylecop.json
+/ModernizationWithAppServiceDotNET/SmartHotel360.Registration.Web.Specs/bin/Debug
+/ModernizationWithAppServiceDotNET/SmartHotel360.Registration.Web.Specs/obj/Debug
+/ModernizationWithAppServiceDotNET/SmartHotel360.Registration.Web.Specs/obj/Release
+/ModernizationWithAppServiceDotNET/SmartHotel360.Registration.Web.Int.Tests/bin/Debug
+/ModernizationWithAppServiceDotNET/SmartHotel360.Registration.Web.Int.Tests/obj/Debug
+/ModernizationWithAppServiceDotNET/SmartHotel360.Registration.Web.Int.Tests/obj/Release
+/ModernizationWithAppServiceDotNET/SmartHotel360.Registration.Web/obj/Release

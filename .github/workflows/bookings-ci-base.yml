@@ -1,0 +1,81 @@
+#Name of the workflow
+name: Bookings-CI-Base
+
+#Triggers to run the workflow
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+    branches: [ main, users/* ]
+
+jobs:
+  # Build Job
+  build:
+    # The type of runner that the job will run on
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout Repository #Checkout Repository
+      uses: actions/checkout@v2
+
+    - name: Microsoft Teams Deploy Card
+      uses: toko-bifrost/ms-teams-deploy-card@3.1.2
+      if: always()
+      with:
+        # Microsoft Teams webhook URI
+        webhook-uri: ${{ secrets.MS_TEAMS_WEBHOOK_URI }}
+        # Github token
+        github-token: ${{ github.token }}
+        # Name of the environment (won't be included in the card if none)
+        environment: build
+        # Show the MS Teams card upon failure only of this Github Actions job
+        show-on-failure: true
+
+    - name: Set Environment Variables - Organizational Details #Set Variables
+      uses: ./.github/actions/set-variable
+      with:
+        variableFileName: 'org-details'
+
+    - name: Set Environment Variables - Booking All Stages #Set Variables
+      uses: ./.github/actions/set-variable
+      with:
+        variableFileName: 'all-stages-booking'
+
+    - name: Setup NuGet #Setup Nuget
+      uses: NuGet/setup-nuget@v1.0.5
+      with:
+        nuget-version: latest
+      
+    - name: Nuget Restore #Nuget Restore
+      run: nuget restore ${{ env.Solution_Path }}
+      
+    - name: Nuget Update #Nuget Update
+      run: nuget update ModernizationWithAppServiceDotNET/SmartHotel360.Registration.Web.Tests/packages.config -Id Selenium.WebDriver.ChromeDriver
+    
+    - name: Setup MSBuild #Setup MSBuild
+      uses: microsoft/setup-msbuild@v1.0.2
+  
+    - name: Build Solution #Build Bookings Web App
+      run: msbuild ${{ env.Solution_Path }} /p:DeployOnBuild=true /p:WebPublishMethod=Package /p:PackageAsSingleFile=true /p:SkipInvalidConfigurations=true /p:PackageLocation="D:\a\${{ env.repoName }}"
+
+    - name: Run Unit Test #Run Unit Tests
+      run: dotnet test "D:\a\${{ env.repoName }}\${{ env.repoName }}\ModernizationWithAppServiceDotNET\SmartHotel360.Registration.Web.Tests\bin\Debug\SmartHotel360.Registration.Web.Tests.dll" --results-directory "D:\a\${{ env.repoName }}\${{ env.repoName }}\" --filter TestCategory!=UITest
+      
+    - name: Copy Items to Upload Artifact folder #copy the files to publish as artifacts
+      run: |
+        New-Item -Path "D:\a\${{ env.repoName }}\" -Name "upload" -ItemType "directory"
+        $destinationRoot = "D:\a\${{ env.repoName }}\upload"
+
+        Copy-Item -Path "D:\a\${{ env.repoName }}\SmartHotel360.Registration.Web.zip" -Recurse -Destination $destinationRoot -Container  
+        Copy-Item -Path "ModernizationWithAppServiceDotNET/SmartHotel360.Registration.Web" -Recurse -Destination $destinationRoot -Container
+        Copy-Item -Path "ModernizationWithAppServiceDotNET/SmartHotel360.Registration.Web.Int.Tests" -Recurse -Destination $destinationRoot -Container
+        Copy-Item -Path "ModernizationWithAppServiceDotNET/SmartHotel360.Registration.Web.Tests" -Recurse -Destination $destinationRoot -Container
+      shell: powershell
+
+    - name: Publish Artifact #Publish Artifact
+      uses: actions/upload-artifact@master
+      with:
+          name: drop
+          path: D:\a\${{ env.repoName }}\upload

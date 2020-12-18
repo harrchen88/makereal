@@ -1,0 +1,530 @@
+#Name of the workflow
+name: Bookings-CD-Base
+
+#Triggers to run the workflow
+on:
+  workflow_run:
+    workflows: ["Bookings-CI-Base"]
+    branches: [main, users/*]
+    types: 
+      - completed
+  workflow_dispatch:
+    branches: [ main, users/* ]
+    inputs:
+      environment:
+        description: 'Environment to release'
+        required: false
+        default: 'dev'
+  repository_dispatch:
+    types: [dev,qa,prd]
+
+jobs:
+  #Release Job
+  release:
+    runs-on: ubuntu-latest
+    outputs:
+      pipeline_env: ${{ steps.assignenv.outputs.env }}
+    steps:
+    - name: Assign Environment based on conditions
+      shell: bash
+      id: assignenv
+      run: |
+        if [ -z ${{ github.event.client_payload.event_type }} ] && [ -z ${{ github.event.inputs.environment }} ]; then
+          echo "pipeline_env=dev" >> $GITHUB_ENV
+          echo "::set-output name=env::dev"
+          echo "This release was triggered by Build Pipeline"
+        elif [ -z ${{ github.event.client_payload.event_type }} ]; then
+          echo "pipeline_env=${{ github.event.inputs.environment }}" >> $GITHUB_ENV
+          echo "::set-output name=env::${{ github.event.inputs.environment }}"
+          echo "This release was triggered manually"
+        else
+          echo "pipeline_env=${{ github.event.client_payload.event_type }}" >> $GITHUB_ENV
+          echo "::set-output name=env::${{ github.event.client_payload.event_type }}"
+          echo "This release was triggered automatically"
+        fi
+
+    - name: Checkout Repository #Checkout the Repo into the agent
+      uses: actions/checkout@v2
+
+    - name: Microsoft Teams Deploy Card
+      uses: toko-bifrost/ms-teams-deploy-card@3.1.2
+      if: always()
+      with:
+        # Microsoft Teams webhook URI
+        webhook-uri: ${{ secrets.MS_TEAMS_WEBHOOK_URI }}
+        # Github token
+        github-token: ${{ github.token }}
+        # Name of the environment (won't be included in the card if none)
+        environment: ${{ env.pipeline_env }}
+        # Show the MS Teams card upon failure only of this Github Actions job
+        show-on-failure: true
+        custom-facts: |
+          - name: Stage
+            value: Release to ${{ env.pipeline_env }}
+
+    - name: Download build artifacts
+      uses: dawidd6/action-download-artifact@v2
+      with:
+        workflow: bookings-ci-base.yml
+        path: $GITHUB_WORKSPACE
+
+    - name: Set Environment Variables - Organizational Details #Set Variables
+      uses: ./.github/actions/set-variable
+      with:
+        variableFileName: 'org-details'
+
+    - name: Set Environment Variables - Booking All Stages
+      uses: ./.github/actions/set-variable
+      with:
+        variableFileName: 'all-stages-booking'
+
+    - name: Set Environment Variables - Booking ${{ env.pipeline_env }}
+      uses: ./.github/actions/set-variable
+      with:
+        variableFileName: 'bookings-${{ env.pipeline_env }}'
+
+    - name: Create GitHub deployment for deployment-${{ env.pipeline_env }}
+      uses: chrnorm/deployment-action@releases/v1
+      id: deployment
+      with:
+        token: "${{ github.token }}"
+        target_url: https://${{ env.cus_prefix }}-${{ env.webapp }}-${{ env.team_suffix }}.azurewebsites.net
+        environment: ${{ env.pipeline_env }}
+        
+    - name: Login to Azure #Login to Azure
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+        
+    - name: Create Resource Group #Create Resource Group
+      uses: azure/CLI@v1
+      with:
+        inlineScript: |
+          az group create --name "${{ env.cus_prefix }}-${{ env.resourcegroup }}-${{ env.team_suffix }}" --location "${{ env.rglocation }}"
+
+    - name: Provision App Service
+      uses: Azure/arm-deploy@v1
+      id: appservicearmoutput
+      with:
+        scope: 'resourcegroup'
+        subscriptionId: '${{ env.subscriptionid }}'
+        resourceGroupName: '${{ env.cus_prefix }}-${{ env.resourcegroup }}-${{ env.team_suffix }}'
+        template: 'ModernizationWithAppServiceDotNET/IAC/App_Services_2.0/app.services.deploy.json'
+        deploymentMode: Incremental
+        parameters: 'ModernizationWithAppServiceDotNET/IAC/App_Services_2.0/app.services.parameters.json appServicePlanName="${{ env.cus_prefix }}-${{ env.appserviceplan }}-${{ env.team_suffix }}" webAppPortalName="${{ env.cus_prefix }}-${{ env.webapp }}-${{ env.team_suffix }}" location="${{ env.rglocation }}"' 
+
+    - name: Create Diagnostic Storage Account Resource Group #Create Resource Group
+      uses: azure/CLI@v1
+      with:
+        inlineScript: |
+          az group create --name "${{ env.cus_prefix }}-${{ env.diagnosticStorageResourceGroup }}-${{ env.team_suffix }}" --location "${{ env.rglocation }}"    
+
+    - name: Provision Diagnostic Storage Account for KeyVault
+      uses: Azure/arm-deploy@v1
+      id: storageAccountOutput
+      with:
+        scope: 'resourcegroup'
+        subscriptionId: '${{ env.subscriptionid }}'
+        resourceGroupName: '${{ env.cus_prefix }}-${{ env.diagnosticStorageResourceGroup }}-${{ env.team_suffix }}'
+        template: 'ModernizationWithAppServiceDotNET/IAC/Storage_Account_2.0/storage.account.deploy.json'
+        deploymentMode: Incremental
+        parameters: 'ModernizationWithAppServiceDotNET/IAC/Storage_Account_2.0/storage.account.parameters.json storageAccountName="${{ env.cus_prefix }}${{ env.diagnosticStorageAccountName }}${{ env.team_suffix }}" storageAccountKind="Storage" storageAccountSku="Standard_GRS"' 
+
+    - name: Get Key Vault Storage Account Access Key
+      uses: azure/CLI@1.0.4
+      with:
+        inlineScript: |
+          keyvaultlogstorageaccountaccesskey=$(az storage account keys list -g "${{ env.cus_prefix }}-${{ env.diagnosticStorageResourceGroup }}-${{ env.team_suffix }}" -n "${{ env.cus_prefix }}${{ env.diagnosticStorageAccountName }}${{ env.team_suffix }}" --query [0].value -o tsv)
+          echo "keyvaultlogstorageaccountaccesskey=$keyvaultlogstorageaccountaccesskey" >> $GITHUB_ENV
+
+    - name: Create Log Analytics Workspace Resource Group #Create Resource Group
+      uses: azure/CLI@v1
+      with:
+        inlineScript: |
+          az group create --name "${{ env.cus_prefix }}-${{ env.logAnalyticsWorkspaceResourceGroup }}" --location "${{ env.rglocation }}"    
+
+    - name: Provision Log Analytics Workspace for KeyVault
+      uses: azure/CLI@v1
+      with:
+        inlineScript: |
+          az deployment group create --name Provision_Log_Analytics_Workspace_for_KeyVault --resource-group "${{ env.cus_prefix }}-${{ env.logAnalyticsWorkspaceResourceGroup }}" --template-file ModernizationWithAppServiceDotNET/IAC/Log_Analytics_2.0/log.analytics.deploy.json --parameters ModernizationWithAppServiceDotNET/IAC/Log_Analytics_2.0/log.analytics.parameters.json --parameters logAnalyticsWorkspaceName="${{ env.cus_prefix }}-${{ env.logAnalyticsWorkspaceName }}-${{ env.team_suffix }}" serviceTier="PerNode" dataRetention=365 location="${{ env.rglocationFull }}" diagnosticStorageAccountName="${{ env.cus_prefix }}${{ env.diagnosticStorageAccountName }}${{ env.team_suffix }}" diagnosticStorageAccountResourceId="${{ steps.storageAccountOutput.outputs.storageAccountResourceId }}" diagnosticStorageAccountAccessKey="${{ env.keyvaultlogstorageaccountaccesskey }}"
+       
+    - name: Provision Key Vault
+      uses: Azure/arm-deploy@v1
+      id: keyvaultarmoutput
+      with:
+        scope: 'resourcegroup'
+        subscriptionId: '${{ env.subscriptionid }}'
+        resourceGroupName: '${{ env.cus_prefix }}-${{ env.resourcegroup }}-${{ env.team_suffix }}'
+        template: 'ModernizationWithAppServiceDotNET/IAC/Key_Vault_2.0/key.vault.deploy.json'
+        deploymentMode: Incremental
+        parameters: 'ModernizationWithAppServiceDotNET/IAC/Key_Vault_2.0/key.vault.parameters.json keyVaultName="${{ env.cus_prefix }}-${{ env.keyVaultName }}${{ env.team_suffix }}" logsRetentionInDays=30 enableVaultForDeployment=true enableVaultForTemplateDeployment=true enableVaultForDiskEncryption=true vaultSku="${{ env.vaultsku }}" diagnosticStorageAccountName="${{ env.cus_prefix }}${{ env.diagnosticStorageAccountName }}${{ env.team_suffix }}" diagnosticStorageAccountRG="${{ env.cus_prefix }}-${{ env.diagnosticStorageResourceGroup }}-${{ env.team_suffix }}" logAnalyticsWorkspaceResourceGroup="${{ env.cus_prefix }}-${{ env.logAnalyticsWorkspaceResourceGroup }}" logAnalyticsWorkspaceName="${{ env.cus_prefix }}-${{ env.logAnalyticsWorkspaceName }}-${{ env.team_suffix }}"'
+
+    - name: Update Access Policy and Secrets in Key Vault
+      uses: azure/CLI@v1
+      with:
+        inlineScript: |
+          az keyvault set-policy --name "${{ env.cus_prefix }}-${{ env.keyVaultName }}${{ env.team_suffix }}" --object-id "${{ steps.appservicearmoutput.outputs.objectId }}" --secret-permissions get list
+          az keyvault set-policy --name "${{ env.cus_prefix }}-${{ env.keyVaultName }}${{ env.team_suffix }}" --object-id "${{ env.servicePrincipleObjId }}" --secret-permissions get list set
+          az keyvault secret set --vault-name "${{ env.cus_prefix }}-${{ env.keyVaultName }}${{ env.team_suffix }}" --name "sqlserveradministratorpassword" --value "${{ env.administratorPassword }}"
+          az keyvault secret set --vault-name "${{ env.cus_prefix }}-${{ env.keyVaultName }}${{ env.team_suffix }}" --name "sqlserveradmin" --value "${{ env.sqlserveradmin }}"
+          az keyvault secret set --vault-name "${{ env.cus_prefix }}-${{ env.keyVaultName }}${{ env.team_suffix }}" --name "localsqlserveradmin" --value "${{ env.localsqlserveradmin }}"
+          az keyvault secret set --vault-name "${{ env.cus_prefix }}-${{ env.keyVaultName }}${{ env.team_suffix }}" --name "localsqlserveradministratorpassword" --value "${{ env.localsqlserveradministratorpassword }}"
+
+    - name: Provision Log Analytics Storage Account SQL
+      uses: Azure/arm-deploy@v1
+      id: sqlstorageAccountOutput
+      with:
+        scope: 'resourcegroup'
+        subscriptionId: '${{ env.subscriptionid }}'
+        resourceGroupName: '${{ env.cus_prefix }}-${{ env.diagnosticStorageResourceGroup }}-${{ env.team_suffix }}'
+        template: 'ModernizationWithAppServiceDotNET/IAC/Storage_Account_2.0/storage.account.deploy.json'
+        deploymentMode: Incremental
+        parameters: 'ModernizationWithAppServiceDotNET/IAC/Storage_Account_2.0/storage.account.parameters.json storageAccountName="${{ env.cus_prefix }}${{ env.sqlsecuritylogstorageaccountname }}${{ env.team_suffix }}" storageAccountKind="Storage" storageAccountSku="Standard_GRS"' 
+
+    - name: Get SQL Storage Account Access Key
+      uses: azure/CLI@1.0.4
+      with:
+        inlineScript: |
+            securitylogstorageaccountaccesskey=$(az storage account keys list -g "${{ env.cus_prefix }}-${{ env.diagnosticStorageResourceGroup }}-${{ env.team_suffix }}" -n "${{ env.cus_prefix }}${{ env.sqlsecuritylogstorageaccountname }}${{ env.team_suffix }}" --query [0].value -o tsv)
+            echo "securitylogstorageaccountaccesskey=$securitylogstorageaccountaccesskey" >> $GITHUB_ENV
+
+    - name: Provision SQL
+      uses: Azure/arm-deploy@v1
+      id: sqlarmoutput
+      with:
+        scope: 'resourcegroup'
+        subscriptionId: '${{ env.subscriptionid }}'
+        resourceGroupName: '${{ env.cus_prefix }}-${{ env.resourcegroup }}-${{ env.team_suffix }}'
+        template: 'ModernizationWithAppServiceDotNET/IAC/SQL_Server_2.0/sql.server.deploy.json'
+        deploymentMode: Incremental
+        parameters: 'ModernizationWithAppServiceDotNET/IAC/SQL_Server_2.0/sql.server.parameters.json SQLServerName="${{ env.cus_prefix }}-${{ env.sqlserver }}-${{ env.team_suffix }}" SQLserverLocation="${{ env.rglocation }}" SQLServerAzureADAdmin="${{ env.administratorLogin }}" SQLServerAzureADAdminSID="${{ env.administratorsid }}" SQLServerAdminPassword="${{ env.administratorPassword }}" SQLServerMicrosoftServicesBypassFirewall=true SecurityLogStorageAccountEndpoint="https://${{ env.cus_prefix }}${{ env.sqlsecuritylogstorageaccountname }}${{ env.team_suffix }}.blob.core.windows.net/" SecurityLogStorageAccountAccessKey="${{ env.securitylogstorageaccountaccesskey }}" elasticPoolName="${{ env.elasticPoolName }}" elasticPoolType="${{ env.ElasticPoolType }}" stage="Release to ${{ env.environment }}"' 
+
+    - name: Provision App Insights
+      uses: Azure/arm-deploy@v1
+      id: armAppInsightsOutput
+      with:
+        scope: 'resourcegroup'
+        subscriptionId: '${{ env.subscriptionid }}'
+        resourceGroupName: '${{ env.cus_prefix }}-${{ env.resourcegroup }}-${{ env.team_suffix }}'
+        template: 'ModernizationWithAppServiceDotNET/IAC/Application_Insights_2.0/application.insights.deploy.json'
+        deploymentMode: Incremental
+        parameters: 'ModernizationWithAppServiceDotNET/IAC/Application_Insights_2.0/application.insights.parameters.json appInsightsName="${{ env.cus_prefix }}-${{ env.appinsights }}-${{ env.team_suffix }}" location="${{ env.rglocation }}"' 
+
+    - name: Add app settings
+      uses: Azure/arm-deploy@v1
+      with:
+        scope: 'resourcegroup'
+        subscriptionId: '${{ env.subscriptionid }}'
+        resourceGroupName: '${{ env.cus_prefix }}-${{ env.resourcegroup }}-${{ env.team_suffix }}'
+        template: 'ModernizationWithAppServiceDotNET/SmartHotel360.Registration.ARM/AppServices/incremental.appservice.deploy.json'
+        deploymentMode: Incremental
+        parameters: 'webSiteName="${{ env.cus_prefix }}-${{ env.webapp }}-${{ env.team_suffix }}" sqlservername="${{ env.cus_prefix }}-${{ env.sqlserver }}-${{ env.team_suffix }}" databasename="${{ env.databasename }}" authenticationMode="${{ env.authenticationMode }}" instrumentationKey="${{ steps.armAppInsightsOutput.outputs.appInsightsKey}}" keyVaultUri="https://${{ env.cus_prefix }}-${{ env.keyVaultName }}${{ env.team_suffix }}.vault.azure.net/" servicePrincipalClientId="${{ env.keyvaultserviceprincipalclientid }}" servicePrincipalPassword="${{ secrets.KEYVAULTSERVICEPRINCIPALCLIENTPASSWORD }}" tenantId="${{ steps.appservicearmoutput.outputs.tenantId }}"' 
+
+    - name: Azure WebApp
+      uses: Azure/webapps-deploy@v2
+      with:
+        app-name: "${{ env.cus_prefix }}-${{ env.webapp }}-${{ env.team_suffix }}"
+        package: "$GITHUB_WORKSPACE/drop/SmartHotel360.Registration.Web"
+
+    - name: Add DB to Elastic Pool
+      uses: azure/CLI@v1
+      with:
+        inlineScript: |
+          az sql db update --resource-group "${{ env.cus_prefix }}-${{ env.resourcegroup }}-${{ env.team_suffix }}" --elastic-pool "${{ env.elasticPoolName }}" --name "${{ env.databasename }}" --server "${{ env.cus_prefix }}-${{ env.sqlserver }}-${{ env.team_suffix }}"
+
+    - name: Update deployment status ${{ env.pipeline_env }} (success)
+      if: success()
+      uses: chrnorm/deployment-status@releases/v1
+      with:
+        token: "${{ github.token }}"
+        target_url: https://${{ env.cus_prefix }}-${{ env.webapp }}-${{ env.team_suffix }}.azurewebsites.net
+        state: "success"
+        deployment_id: ${{ steps.deployment.outputs.deployment_id }}
+
+    - name: Update deployment status ${{ env.pipeline_env }} (failure)
+      if: ${{ failure() &&  env.source_branch_name == 'refs/heads/int' }}
+      uses: chrnorm/deployment-status@releases/v1
+      with:
+        token: "${{ github.token }}"
+        target_url: https://${{ env.cus_prefix }}-${{ env.webapp }}-${{ env.team_suffix }}.azurewebsites.net
+        state: "failure"
+        deployment_id: ${{ steps.deployment.outputs.deployment_id }}
+
+  # BDD Automated Tests  
+  BDD_Automated_Tests:
+    needs: [release]
+    runs-on: windows-latest
+    outputs:
+      bdd_status: ${{ steps.bddtests.outputs.outcome }}
+    if: needs.release.outputs.pipeline_env == 'qa'
+    steps:
+    - uses: actions/checkout@v2
+    
+    - name: Download build artifacts
+      uses: dawidd6/action-download-artifact@v2
+      with:
+        workflow: bookings-ci-base.yml
+
+    - name: Set Environment Variables - Organizational Details #Set Variables
+      uses: ./.github/actions/set-variable
+      with:
+        variableFileName: 'org-details'
+
+    - name: Set Environment Variables - Booking All Stages
+      uses: ./.github/actions/set-variable
+      with:
+        variableFileName: 'all-stages-booking'
+
+    - name: Set Environment Variables - Booking ${{ needs.release.outputs.pipeline_env }}
+      uses: ./.github/actions/set-variable
+      with:
+        variableFileName: 'bookings-${{ needs.release.outputs.pipeline_env }}'
+
+    - name: Microsoft Teams Deploy Card
+      uses: toko-bifrost/ms-teams-deploy-card@3.1.2
+      if: always()
+      with:
+        # Microsoft Teams webhook URI
+        webhook-uri: ${{ secrets.MS_TEAMS_WEBHOOK_URI }}
+        # Github token
+        github-token: ${{ github.token }}
+        # Name of the environment (won't be included in the card if none)
+        environment: ${{ needs.release.outputs.pipeline_env }}
+        # Show the MS Teams card upon failure only of this Github Actions job
+        show-on-failure: true
+        custom-facts: |
+          - name: Stage
+            value: BDD Automated Tests - ${{ needs.release.outputs.pipeline_env }}
+        
+    - name: Update App Settings for BDD automated functional tests
+      run: ModernizationWithAppServiceDotNET/SmartHotel360.Registration.ARM/SpecflowIntegrationTest/UpdateAppConfigAtRunTime.ps1 -configPath "D:\a\${{ env.repoName }}\${{ env.repoName }}\drop\SmartHotel360.Registration.Web.Int.Tests\bin\Debug\SmartHotel360.Registration.Web.Integration.Tests.dll.config" -authenticationMode "${{ env.authenticationMode }}" -sqlserver "${{ env.cus_prefix }}-${{ env.sqlserver }}-${{ env.team_suffix }}" -databaseName "${{ env.databasename }}" -keyVaultUri "https://${{ env.cus_prefix }}-${{ env.keyVaultName }}${{ env.team_suffix }}.vault.azure.net/" -servicePrincipalClientId "${{ env.keyvaultserviceprincipalclientid }}" -servicePrincipalPassword "${{ secrets.KEYVAULTSERVICEPRINCIPALCLIENTPASSWORD }}"
+      shell: powershell
+      
+    - name: Run BDD Test
+      id: bddtests
+      run: dotnet test D:\a\${{ env.repoName }}\${{ env.repoName }}\drop\SmartHotel360.Registration.Web.Int.Tests\bin\Debug\SmartHotel360.Registration.Web.Integration.Tests.dll --results-directory D:\a\DevOps-Dojo-Booking\TestResults
+
+  #UI Tests   
+  UI_Tests:
+    needs: [release]
+    runs-on: windows-latest
+    outputs:
+      ui_status: ${{ steps.uitests.outputs.outcome }}
+    if: needs.release.outputs.pipeline_env == 'qa'
+    steps:
+    - uses: actions/checkout@v2
+    
+    - name: Download build artifacts
+      uses: dawidd6/action-download-artifact@v2
+      with:
+        workflow: bookings-ci-base.yml
+
+    - name: Set Environment Variables - Organizational Details #Set Variables
+      uses: ./.github/actions/set-variable
+      with:
+        variableFileName: 'org-details'
+
+    - name: Set Environment Variables - Booking All Stages
+      uses: ./.github/actions/set-variable
+      with:
+        variableFileName: 'all-stages-booking'
+
+    - name: Set Environment Variables - Booking ${{ needs.release.outputs.pipeline_env }}
+      uses: ./.github/actions/set-variable
+      with:
+        variableFileName: 'bookings-${{ needs.release.outputs.pipeline_env }}'
+
+    - name: Microsoft Teams Deploy Card
+      uses: toko-bifrost/ms-teams-deploy-card@3.1.2
+      if: always()
+      with:
+        # Microsoft Teams webhook URI
+        webhook-uri: ${{ secrets.MS_TEAMS_WEBHOOK_URI }}
+        # Github token
+        github-token: ${{ github.token }}
+        # Name of the environment (won't be included in the card if none)
+        environment: ${{ needs.release.outputs.pipeline_env }}
+        # Show the MS Teams card upon failure only of this Github Actions job
+        show-on-failure: true
+        custom-facts: |
+          - name: Stage
+            value: UI Tests - ${{ needs.release.outputs.pipeline_env }}
+        
+    - name: Update Chrome Version
+      run: |
+        $theurl = "http://dl.google.com/edgedl/chrome/install/GoogleChromeStandaloneEnterprise64.msi"
+        mkdir c:\tmp
+        $output = "c:\tmp\chrome.msi"
+        Invoke-WebRequest -Uri $theurl -OutFile $output -ErrorAction SilentlyContinue
+        msiexec /q /i c:\tmp\chrome.msi
+        start-sleep -Seconds 120 # sleep for 2 mins just to allow updates to be processed 
+        Remove-Item -Path c:\tmp\chrome.msi
+      shell: powershell
+    
+    - name: Update app config for UI Tests
+      run: ModernizationWithAppServiceDotNET/SmartHotel360.Registration.ARM/UITest/UpdateAppConfigSettingsUITests.ps1 -configPath "D:\a\${{ env.repoName }}\${{ env.repoName }}\drop\SmartHotel360.Registration.Web.Tests\bin\Debug\SmartHotel360.Registration.Web.Tests.dll.config" -webPortalUrl "https://${{ env.cus_prefix }}-${{ env.webapp }}-${{ env.team_suffix }}.azurewebsites.net"
+      shell: powershell
+      
+    - name: Run UI Test
+      id: uitests
+      run: dotnet test D:\a\${{ env.repoName }}\${{ env.repoName }}\drop\SmartHotel360.Registration.Web.Tests\bin\Debug\SmartHotel360.Registration.Web.Tests.dll --results-directory D:\a\DevOps-Dojo-Booking\TestResults --filter TestCategory=UITest
+
+  #ContinuousSecurityAZSK
+  AZSK_Scan:
+    needs: [release]
+    runs-on: windows-latest
+    steps:
+
+    - uses: actions/checkout@v2
+
+    - name: Set Environment Variables - Organizational Details #Set Variables
+      uses: ./.github/actions/set-variable
+      with:
+        variableFileName: 'org-details'
+
+    - name: Set Environment Variables - Booking All Stages
+      uses: ./.github/actions/set-variable
+      with:
+        variableFileName: 'all-stages-booking'
+
+    - name: Set Environment Variables - Booking ${{ needs.release.outputs.pipeline_env }}
+      uses: ./.github/actions/set-variable
+      with:
+        variableFileName: 'bookings-${{ needs.release.outputs.pipeline_env }}'
+
+    - name: Microsoft Teams Deploy Card
+      uses: toko-bifrost/ms-teams-deploy-card@3.1.2
+      if: always()
+      with:
+        # Microsoft Teams webhook URI
+        webhook-uri: ${{ secrets.MS_TEAMS_WEBHOOK_URI }}
+        # Github token
+        github-token: ${{ github.token }}
+        # Name of the environment (won't be included in the card if none)
+        environment: ${{ needs.release.outputs.pipeline_env }}
+        # Show the MS Teams card upon failure only of this Github Actions job
+        show-on-failure: true
+        custom-facts: |
+          - name: Stage
+            value: AZSK Scan - ${{ needs.release.outputs.pipeline_env }}
+
+    - name: Login via Az module
+      uses: azure/login@v1.1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+        enable-AzPSSession: true
+
+    - name: Install Az-Sk Module and Run AzSK Security Verification Tests
+      run: |
+        Install-Module AzSK -AllowClobber -SkipPublisherCheck -Force
+        Import-Module AzSK
+        (ECHO Y | powershell Get-AzSKAzureServicesSecurityStatus -SubscriptionId  '${{ env.subscriptionid }}' -ResourceGroupNames '${{ env.cus_prefix }}-${{ env.resourcegroup }}-${{ env.team_suffix }}' -DoNotOpenOutputFolder)
+        New-Item -Path "D:\a\${{ env.repoName }}\" -Name "upload" -ItemType "directory"
+        $destinationRoot = "D:\a\${{ env.repoName }}\upload\AzSk.zip"
+        Compress-Archive -LiteralPath ${{ env.az_sk_path }} -DestinationPath $destinationRoot
+      shell: powershell    
+
+    - name: Publish AzSK Results #Publish Artifact
+      uses: actions/upload-artifact@master
+      with:
+          name: azsk
+          path: D:\a\${{ env.repoName }}\upload
+
+  #ContinuousSecurityOWASP
+  OWASP_Scan:
+    needs: [release]
+    runs-on: ubuntu-latest
+    outputs:
+      owasp_status: ${{ steps.owasptests.outputs.outcome }}
+    steps:
+
+    - uses: actions/checkout@v2
+
+    - name: Set Environment Variables - Organizational Details #Set Variables
+      uses: ./.github/actions/set-variable
+      with:
+        variableFileName: 'org-details'
+
+    - name: Set Environment Variables - Booking All Stages
+      uses: ./.github/actions/set-variable
+      with:
+        variableFileName: 'all-stages-booking'
+
+    - name: Set Environment Variables - Booking ${{ needs.release.outputs.pipeline_env }}
+      uses: ./.github/actions/set-variable
+      with:
+        variableFileName: 'bookings-${{ needs.release.outputs.pipeline_env }}'
+
+    - name: Microsoft Teams Deploy Card
+      uses: toko-bifrost/ms-teams-deploy-card@3.1.2
+      if: always()
+      with:
+        # Microsoft Teams webhook URI
+        webhook-uri: ${{ secrets.MS_TEAMS_WEBHOOK_URI }}
+        # Github token
+        github-token: ${{ github.token }}
+        # Name of the environment (won't be included in the card if none)
+        environment: ${{ needs.release.outputs.pipeline_env }}
+        # Show the MS Teams card upon failure only of this Github Actions job
+        show-on-failure: true
+        custom-facts: |
+          - name: Stage
+            value: OWASP Scan - ${{ needs.release.outputs.pipeline_env }}
+
+    - name: OWASP ZAP Full Scan
+      id: owasptests
+      uses: zaproxy/action-full-scan@v0.2.0
+      with:
+        # Target URL
+        target: "https://${{ env.cus_prefix }}-${{ env.webapp }}-${{ env.team_suffix }}.azurewebsites.net"
+        # The action status will be set to fail if ZAP identifies any alerts during the full scan
+        fail_action: false
+        issue_title: "ZAP Scan - ${{ needs.release.outputs.pipeline_env }}"
+    
+  Issues_Creation:
+    needs: [BDD_Automated_Tests,UI_Tests]
+    runs-on: ubuntu-latest
+    steps:
+
+    - uses: actions/checkout@v2
+    - name: Create ADO Bug on Failure for BDD Tests
+      uses: JasonEtco/create-an-issue@v2
+      if: needs.BDD_Automated_Tests.outputs.bdd_status == 'failure'
+      env:
+        GITHUB_TOKEN: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+      with:
+        filename: .github/issues/bdd-issue-template.md
+        update_existing: true
+
+    - name: Create ADO Bug on Failure for UI Tests
+      uses: JasonEtco/create-an-issue@v2
+      if: needs.UI_Tests.outputs.ui_status == 'failure'
+      env:
+        GITHUB_TOKEN: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+      with:
+        filename: .github/issues/ui-issue-template.md
+        update_existing: true
+
+  Release_To_Next_Env:
+    needs: [release]
+    runs-on: ubuntu-latest
+    if: needs.release.outputs.pipeline_env != 'prd'
+    steps:
+
+    - name: Configure parameters for Repository Dispatch
+      shell: bash
+      run: |
+        if [ ${{ needs.release.outputs.pipeline_env }} = 'dev' ]; then
+          echo "trigger=qa" >> $GITHUB_ENV
+        fi
+        if [ ${{ needs.release.outputs.pipeline_env }} = 'qa' ]; then
+          echo "trigger=prd" >> $GITHUB_ENV
+        fi
+
+    - name: Trigger - Release to ${{ env.trigger }}
+      uses: peter-evans/repository-dispatch@v1
+      with:
+        token: ${{ secrets.REPO_ACCESS_TOKEN }}
+        event-type: ${{ env.trigger }}
+        client-payload: '{"event_type": "${{ env.trigger }}"}'
