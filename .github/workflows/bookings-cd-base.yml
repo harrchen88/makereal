@@ -492,7 +492,7 @@ jobs:
       uses: JasonEtco/create-an-issue@v2
       if: needs.BDD_Automated_Tests.outputs.bdd_status == 'failure'
       env:
-        GITHUB_TOKEN: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+        GITHUB_TOKEN: ${{ secrets.PAT }}
       with:
         filename: .github/issues/bdd-issue-template.md
         update_existing: true
@@ -501,7 +501,7 @@ jobs:
       uses: JasonEtco/create-an-issue@v2
       if: needs.UI_Tests.outputs.ui_status == 'failure'
       env:
-        GITHUB_TOKEN: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+        GITHUB_TOKEN: ${{ secrets.PAT }}
       with:
         filename: .github/issues/ui-issue-template.md
         update_existing: true
@@ -525,6 +525,6 @@ jobs:
     - name: Trigger - Release to ${{ env.trigger }}
       uses: peter-evans/repository-dispatch@v1
       with:
-        token: ${{ secrets.REPO_ACCESS_TOKEN }}
+        token: ${{ secrets.PAT }}
         event-type: ${{ env.trigger }}
         client-payload: '{"event_type": "${{ env.trigger }}"}'

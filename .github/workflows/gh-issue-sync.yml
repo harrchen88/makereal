@@ -3,6 +3,8 @@ name: Sync-Issue-ADO
 on:
   issues:
     types: [opened, edited, deleted, closed, reopened]
+  workflow_dispatch:
+    branches: [ main, users/* ]
 
 jobs:
   alert:

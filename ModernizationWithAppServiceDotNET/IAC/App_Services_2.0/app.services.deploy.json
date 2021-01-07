@@ -51,11 +51,11 @@
             "location": "[parameters('location')]",
             "dependsOn": [],
             "sku": {
-                "name": "F1",
-                "tier": "Free",
-                "size": "F1",
-                "family": "F",
-                "capacity": 1
+              "name": "D1",
+              "tier": "Shared",
+              "size": "D1",
+              "family": "D",
+              "capacity": 0
             },
             "kind": "app",
             "properties": {}
