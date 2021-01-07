@@ -141,13 +141,13 @@ jobs:
       uses: azure/CLI@v1
       with:
         inlineScript: |
-          az group create --name "${{ env.cus_prefix }}-${{ env.logAnalyticsWorkspaceResourceGroup }}" --location "${{ env.rglocation }}"    
+          az group create --name "${{ env.cus_prefix }}-${{ env.logAnalyticsWorkspaceResourceGroup }}-${{ env.team_suffix }}" --location "${{ env.rglocation }}"    
 
     - name: Provision Log Analytics Workspace for KeyVault
       uses: azure/CLI@v1
       with:
         inlineScript: |
-          az deployment group create --name Provision_Log_Analytics_Workspace_for_KeyVault --resource-group "${{ env.cus_prefix }}-${{ env.logAnalyticsWorkspaceResourceGroup }}" --template-file ModernizationWithAppServiceDotNET/IAC/Log_Analytics_2.0/log.analytics.deploy.json --parameters ModernizationWithAppServiceDotNET/IAC/Log_Analytics_2.0/log.analytics.parameters.json --parameters logAnalyticsWorkspaceName="${{ env.cus_prefix }}-${{ env.logAnalyticsWorkspaceName }}-${{ env.team_suffix }}" serviceTier="PerNode" dataRetention=365 location="${{ env.rglocationFull }}" diagnosticStorageAccountName="${{ env.cus_prefix }}${{ env.diagnosticStorageAccountName }}${{ env.team_suffix }}" diagnosticStorageAccountResourceId="${{ steps.storageAccountOutput.outputs.storageAccountResourceId }}" diagnosticStorageAccountAccessKey="${{ env.keyvaultlogstorageaccountaccesskey }}"
+          az deployment group create --name Provision_Log_Analytics_Workspace_for_KeyVault --resource-group "${{ env.cus_prefix }}-${{ env.logAnalyticsWorkspaceResourceGroup }}-${{ env.team_suffix }}" --template-file ModernizationWithAppServiceDotNET/IAC/Log_Analytics_2.0/log.analytics.deploy.json --parameters ModernizationWithAppServiceDotNET/IAC/Log_Analytics_2.0/log.analytics.parameters.json --parameters logAnalyticsWorkspaceName="${{ env.cus_prefix }}-${{ env.logAnalyticsWorkspaceName }}-${{ env.team_suffix }}" serviceTier="PerNode" dataRetention=365 location="${{ env.rglocationFull }}" diagnosticStorageAccountName="${{ env.cus_prefix }}${{ env.diagnosticStorageAccountName }}${{ env.team_suffix }}" diagnosticStorageAccountResourceId="${{ steps.storageAccountOutput.outputs.storageAccountResourceId }}" diagnosticStorageAccountAccessKey="${{ env.keyvaultlogstorageaccountaccesskey }}"
        
     - name: Provision Key Vault
       uses: Azure/arm-deploy@v1
@@ -158,7 +158,7 @@ jobs:
         resourceGroupName: '${{ env.cus_prefix }}-${{ env.resourcegroup }}-${{ env.team_suffix }}'
         template: 'ModernizationWithAppServiceDotNET/IAC/Key_Vault_2.0/key.vault.deploy.json'
         deploymentMode: Incremental
-        parameters: 'ModernizationWithAppServiceDotNET/IAC/Key_Vault_2.0/key.vault.parameters.json keyVaultName="${{ env.cus_prefix }}-${{ env.keyVaultName }}${{ env.team_suffix }}" logsRetentionInDays=30 enableVaultForDeployment=true enableVaultForTemplateDeployment=true enableVaultForDiskEncryption=true vaultSku="${{ env.vaultsku }}" diagnosticStorageAccountName="${{ env.cus_prefix }}${{ env.diagnosticStorageAccountName }}${{ env.team_suffix }}" diagnosticStorageAccountRG="${{ env.cus_prefix }}-${{ env.diagnosticStorageResourceGroup }}-${{ env.team_suffix }}" logAnalyticsWorkspaceResourceGroup="${{ env.cus_prefix }}-${{ env.logAnalyticsWorkspaceResourceGroup }}" logAnalyticsWorkspaceName="${{ env.cus_prefix }}-${{ env.logAnalyticsWorkspaceName }}-${{ env.team_suffix }}"'
+        parameters: 'ModernizationWithAppServiceDotNET/IAC/Key_Vault_2.0/key.vault.parameters.json keyVaultName="${{ env.cus_prefix }}-${{ env.keyVaultName }}${{ env.team_suffix }}" logsRetentionInDays=30 enableVaultForDeployment=true enableVaultForTemplateDeployment=true enableVaultForDiskEncryption=true vaultSku="${{ env.vaultsku }}" diagnosticStorageAccountName="${{ env.cus_prefix }}${{ env.diagnosticStorageAccountName }}${{ env.team_suffix }}" diagnosticStorageAccountRG="${{ env.cus_prefix }}-${{ env.diagnosticStorageResourceGroup }}-${{ env.team_suffix }}" logAnalyticsWorkspaceResourceGroup="${{ env.cus_prefix }}-${{ env.logAnalyticsWorkspaceResourceGroup }}-${{ env.team_suffix }}" logAnalyticsWorkspaceName="${{ env.cus_prefix }}-${{ env.logAnalyticsWorkspaceName }}-${{ env.team_suffix }}"'
 
     - name: Update Access Policy and Secrets in Key Vault
       uses: azure/CLI@v1
