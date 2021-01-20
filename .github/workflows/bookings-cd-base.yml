@@ -589,9 +589,9 @@ jobs:
       shell: bash
       if: env.trigger == 'prd'
       run: |
-        latency=$(echo '${{ steps.availability.outputs.response }}' | jq .tables[].rows[0][0])
+        latency=$(echo '${{ steps.availability.outputs.response }}' | jq .tables[].rows[0][0] | tr -d '"')
         echo $latency
-        if (( $(echo "$latency 0" | awk '{print ($1 > $2)}') ));
+        if [ $latency -eq 0 ];
         then
           exit 1
         fi
