@@ -4,10 +4,10 @@ name: Bookings-CD-Base
 #Triggers to run the workflow
 on:
   workflow_run:
-    workflows: ["Bookings-CI-Base"]
-    branches: [main, users/*]
-    types: 
-      - completed
+      workflows: ["Bookings-CI-Base"]
+      branches: [main, users/*]
+      types: 
+        - completed
   workflow_dispatch:
     branches: [ main, users/* ]
     inputs:
@@ -101,7 +101,7 @@ jobs:
       with:
         inlineScript: |
           az group create --name "${{ env.cus_prefix }}-${{ env.resourcegroup }}-${{ env.team_suffix }}" --location "${{ env.rglocation }}"
-
+      
     - name: Provision App Service
       uses: Azure/arm-deploy@v1
       id: appservicearmoutput
@@ -112,13 +112,13 @@ jobs:
         template: 'ModernizationWithAppServiceDotNET/IAC/App_Services_2.0/app.services.deploy.json'
         deploymentMode: Incremental
         parameters: 'ModernizationWithAppServiceDotNET/IAC/App_Services_2.0/app.services.parameters.json appServicePlanName="${{ env.cus_prefix }}-${{ env.appserviceplan }}-${{ env.team_suffix }}" webAppPortalName="${{ env.cus_prefix }}-${{ env.webapp }}-${{ env.team_suffix }}" location="${{ env.rglocation }}"' 
-
+      
     - name: Create Diagnostic Storage Account Resource Group #Create Resource Group
       uses: azure/CLI@v1
       with:
         inlineScript: |
           az group create --name "${{ env.cus_prefix }}-${{ env.diagnosticStorageResourceGroup }}-${{ env.team_suffix }}" --location "${{ env.rglocation }}"    
-
+      
     - name: Provision Diagnostic Storage Account for KeyVault
       uses: Azure/arm-deploy@v1
       id: storageAccountOutput
@@ -129,26 +129,26 @@ jobs:
         template: 'ModernizationWithAppServiceDotNET/IAC/Storage_Account_2.0/storage.account.deploy.json'
         deploymentMode: Incremental
         parameters: 'ModernizationWithAppServiceDotNET/IAC/Storage_Account_2.0/storage.account.parameters.json storageAccountName="${{ env.cus_prefix }}${{ env.diagnosticStorageAccountName }}${{ env.team_suffix }}" storageAccountKind="Storage" storageAccountSku="Standard_GRS"' 
-
+      
     - name: Get Key Vault Storage Account Access Key
       uses: azure/CLI@1.0.4
       with:
         inlineScript: |
           keyvaultlogstorageaccountaccesskey=$(az storage account keys list -g "${{ env.cus_prefix }}-${{ env.diagnosticStorageResourceGroup }}-${{ env.team_suffix }}" -n "${{ env.cus_prefix }}${{ env.diagnosticStorageAccountName }}${{ env.team_suffix }}" --query [0].value -o tsv)
           echo "keyvaultlogstorageaccountaccesskey=$keyvaultlogstorageaccountaccesskey" >> $GITHUB_ENV
-
+      
     - name: Create Log Analytics Workspace Resource Group #Create Resource Group
       uses: azure/CLI@v1
       with:
         inlineScript: |
           az group create --name "${{ env.cus_prefix }}-${{ env.logAnalyticsWorkspaceResourceGroup }}-${{ env.team_suffix }}" --location "${{ env.rglocation }}"    
-
+      
     - name: Provision Log Analytics Workspace for KeyVault
       uses: azure/CLI@v1
       with:
         inlineScript: |
           az deployment group create --name Provision_Log_Analytics_Workspace_for_KeyVault --resource-group "${{ env.cus_prefix }}-${{ env.logAnalyticsWorkspaceResourceGroup }}-${{ env.team_suffix }}" --template-file ModernizationWithAppServiceDotNET/IAC/Log_Analytics_2.0/log.analytics.deploy.json --parameters ModernizationWithAppServiceDotNET/IAC/Log_Analytics_2.0/log.analytics.parameters.json --parameters logAnalyticsWorkspaceName="${{ env.cus_prefix }}-${{ env.logAnalyticsWorkspaceName }}-${{ env.team_suffix }}" serviceTier="PerNode" dataRetention=365 location="${{ env.rglocationFull }}" diagnosticStorageAccountName="${{ env.cus_prefix }}${{ env.diagnosticStorageAccountName }}${{ env.team_suffix }}" diagnosticStorageAccountResourceId="${{ steps.storageAccountOutput.outputs.storageAccountResourceId }}" diagnosticStorageAccountAccessKey="${{ env.keyvaultlogstorageaccountaccesskey }}"
-       
+      
     - name: Provision Key Vault
       uses: Azure/arm-deploy@v1
       id: keyvaultarmoutput
@@ -159,7 +159,7 @@ jobs:
         template: 'ModernizationWithAppServiceDotNET/IAC/Key_Vault_2.0/key.vault.deploy.json'
         deploymentMode: Incremental
         parameters: 'ModernizationWithAppServiceDotNET/IAC/Key_Vault_2.0/key.vault.parameters.json keyVaultName="${{ env.cus_prefix }}-${{ env.keyVaultName }}${{ env.team_suffix }}" logsRetentionInDays=30 enableVaultForDeployment=true enableVaultForTemplateDeployment=true enableVaultForDiskEncryption=true vaultSku="${{ env.vaultsku }}" diagnosticStorageAccountName="${{ env.cus_prefix }}${{ env.diagnosticStorageAccountName }}${{ env.team_suffix }}" diagnosticStorageAccountRG="${{ env.cus_prefix }}-${{ env.diagnosticStorageResourceGroup }}-${{ env.team_suffix }}" logAnalyticsWorkspaceResourceGroup="${{ env.cus_prefix }}-${{ env.logAnalyticsWorkspaceResourceGroup }}-${{ env.team_suffix }}" logAnalyticsWorkspaceName="${{ env.cus_prefix }}-${{ env.logAnalyticsWorkspaceName }}-${{ env.team_suffix }}"'
-
+      
     - name: Update Access Policy and Secrets in Key Vault
       uses: azure/CLI@v1
       with:
@@ -170,7 +170,7 @@ jobs:
           az keyvault secret set --vault-name "${{ env.cus_prefix }}-${{ env.keyVaultName }}${{ env.team_suffix }}" --name "sqlserveradmin" --value "${{ env.sqlserveradmin }}"
           az keyvault secret set --vault-name "${{ env.cus_prefix }}-${{ env.keyVaultName }}${{ env.team_suffix }}" --name "localsqlserveradmin" --value "${{ env.localsqlserveradmin }}"
           az keyvault secret set --vault-name "${{ env.cus_prefix }}-${{ env.keyVaultName }}${{ env.team_suffix }}" --name "localsqlserveradministratorpassword" --value "${{ env.localsqlserveradministratorpassword }}"
-
+      
     - name: Provision Log Analytics Storage Account SQL
       uses: Azure/arm-deploy@v1
       id: sqlstorageAccountOutput
@@ -181,14 +181,14 @@ jobs:
         template: 'ModernizationWithAppServiceDotNET/IAC/Storage_Account_2.0/storage.account.deploy.json'
         deploymentMode: Incremental
         parameters: 'ModernizationWithAppServiceDotNET/IAC/Storage_Account_2.0/storage.account.parameters.json storageAccountName="${{ env.cus_prefix }}${{ env.sqlsecuritylogstorageaccountname }}${{ env.team_suffix }}" storageAccountKind="Storage" storageAccountSku="Standard_GRS"' 
-
+      
     - name: Get SQL Storage Account Access Key
       uses: azure/CLI@1.0.4
       with:
         inlineScript: |
             securitylogstorageaccountaccesskey=$(az storage account keys list -g "${{ env.cus_prefix }}-${{ env.diagnosticStorageResourceGroup }}-${{ env.team_suffix }}" -n "${{ env.cus_prefix }}${{ env.sqlsecuritylogstorageaccountname }}${{ env.team_suffix }}" --query [0].value -o tsv)
             echo "securitylogstorageaccountaccesskey=$securitylogstorageaccountaccesskey" >> $GITHUB_ENV
-
+      
     - name: Provision SQL
       uses: Azure/arm-deploy@v1
       id: sqlarmoutput
@@ -199,7 +199,7 @@ jobs:
         template: 'ModernizationWithAppServiceDotNET/IAC/SQL_Server_2.0/sql.server.deploy.json'
         deploymentMode: Incremental
         parameters: 'ModernizationWithAppServiceDotNET/IAC/SQL_Server_2.0/sql.server.parameters.json SQLServerName="${{ env.cus_prefix }}-${{ env.sqlserver }}-${{ env.team_suffix }}" SQLserverLocation="${{ env.rglocation }}" SQLServerAzureADAdmin="${{ env.administratorLogin }}" SQLServerAzureADAdminSID="${{ env.administratorsid }}" SQLServerAdminPassword="${{ env.administratorPassword }}" SQLServerMicrosoftServicesBypassFirewall=true SecurityLogStorageAccountEndpoint="https://${{ env.cus_prefix }}${{ env.sqlsecuritylogstorageaccountname }}${{ env.team_suffix }}.blob.core.windows.net/" SecurityLogStorageAccountAccessKey="${{ env.securitylogstorageaccountaccesskey }}" elasticPoolName="${{ env.elasticPoolName }}" elasticPoolType="${{ env.ElasticPoolType }}" stage="Release to ${{ env.environment }}"' 
-
+      
     - name: Provision App Insights
       uses: Azure/arm-deploy@v1
       id: armAppInsightsOutput
@@ -210,6 +210,33 @@ jobs:
         template: 'ModernizationWithAppServiceDotNET/IAC/Application_Insights_2.0/application.insights.deploy.json'
         deploymentMode: Incremental
         parameters: 'ModernizationWithAppServiceDotNET/IAC/Application_Insights_2.0/application.insights.parameters.json appInsightsName="${{ env.cus_prefix }}-${{ env.appinsights }}-${{ env.team_suffix }}" location="${{ env.rglocation }}"' 
+
+    - name: Generate AppInsights API Key
+      uses: azure/CLI@1.0.4
+      if: env.pipeline_env == 'prd'
+      id: appinsights_key
+      continue-on-error: true
+      with:
+        inlineScript: |
+          az config set extension.use_dynamic_install=yes_without_prompt
+          output=$(az monitor app-insights api-key create --api-key mgr-slo --read-properties ReadTelemetry -g '${{ env.cus_prefix }}-${{ env.resourcegroup }}-${{ env.team_suffix }}' --app '${{ env.cus_prefix }}-${{ env.appinsights }}-${{ env.team_suffix }}' | jq .apiKey | tr -d '"')
+          echo ::set-output name=key::$output
+
+    - name: Create SLO_API_KEY Secret
+      uses: gliech/create-github-secret-action@v1
+      if: env.pipeline_env == 'prd' && steps.appinsights_key.outputs.key != ''
+      with:
+        name: SLO_API_KEY
+        value: ${{ steps.appinsights_key.outputs.key }}
+        pa_token: ${{ secrets.PAT }}
+
+    - name: Create SLO_API_ID Secret
+      uses: gliech/create-github-secret-action@v1
+      if: env.pipeline_env == 'prd' && steps.appinsights_key.outputs.key != ''
+      with:
+        name: SLO_APP_ID
+        value: ${{ steps.armAppInsightsOutput.outputs.appInsightsAppId }}
+        pa_token: ${{ secrets.PAT }}
 
     - name: Add app settings
       uses: Azure/arm-deploy@v1
@@ -512,6 +539,13 @@ jobs:
     if: needs.release.outputs.pipeline_env != 'prd'
     steps:
 
+    - uses: actions/checkout@v2
+
+    - name: Set Environment Variables - Booking All Stages
+      uses: ./.github/actions/set-variable
+      with:
+        variableFileName: 'all-stages-booking'
+
     - name: Configure parameters for Repository Dispatch
       shell: bash
       run: |
@@ -522,9 +556,56 @@ jobs:
           echo "trigger=prd" >> $GITHUB_ENV
         fi
 
+    - name: Get Latency
+      uses: fjogeleit/http-request-action@master
+      if: env.trigger == 'prd'
+      id: slo
+      with:
+        url: https://api.applicationinsights.io/v1/apps/${{ secrets.SLO_APP_ID }}${{ env.slo_query }}
+        method: 'GET'
+        customHeaders: '{"x-api-key":"${{ secrets.SLO_API_KEY }}"}'
+
+    - name: Check Latency
+      shell: bash
+      if: env.trigger == 'prd'
+      run: |
+        slo=$(echo '${{ steps.slo.outputs.response }}' | jq .tables[].rows[0][1])
+        echo $slo
+        if (( $(echo "$slo ${{ env.slo_threshold }}" | awk '{print ($1 > $2)}') ));
+        then
+          exit 1
+        fi
+
+    - name: Get Availability
+      uses: fjogeleit/http-request-action@master
+      if: env.trigger == 'prd'
+      id: availability
+      with:
+        url: https://api.applicationinsights.io/v1/apps/${{ secrets.SLO_APP_ID }}${{ env.latency_query }}
+        method: 'GET'
+        customHeaders: '{"x-api-key":"${{ secrets.SLO_API_KEY }}"}'
+
+    - name: Check Availability
+      shell: bash
+      if: env.trigger == 'prd'
+      run: |
+        latency=$(echo '${{ steps.availability.outputs.response }}' | jq .tables[].rows[0][0])
+        echo $latency
+        if (( $(echo "$latency 0" | awk '{print ($1 > $2)}') ));
+        then
+          exit 1
+        fi
+
     - name: Trigger - Release to ${{ env.trigger }}
       uses: peter-evans/repository-dispatch@v1
       with:
         token: ${{ secrets.PAT }}
         event-type: ${{ env.trigger }}
         client-payload: '{"event_type": "${{ env.trigger }}"}'
+
+    #- name: Trigger - Release to ${{ env.trigger }}
+    #  uses: benc-uk/workflow-dispatch@v1
+    #  with:
+    #    workflow: Bookings-CD-Base
+    #    token: ${{ secrets.PAT }}
+    #    inputs: '{ "environment": "${{ env.trigger }}" }'
